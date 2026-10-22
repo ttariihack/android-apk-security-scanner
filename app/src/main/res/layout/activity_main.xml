@@ -5,39 +5,63 @@
     android:orientation="vertical"
     android:padding="16dp">
 
+    <TextView
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:text="APK Security Scanner"
+        android:textSize="20sp"
+        android:textStyle="bold"
+        android:paddingBottom="12dp"/>
+
     <Button
         android:id="@+id/btnPickApk"
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
-        android:text="@string/pick_apk" />
+        android:text="Pilih APK" />
+
+    <Button
+        android:id="@+id/btnScan"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:layout_marginTop="8dp"
+        android:text="Scan APK" />
+
+    <Button
+        android:id="@+id/btnCopy"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:layout_marginTop="8dp"
+        android:text="Salin Hasil" />
 
     <TextView
         android:id="@+id/tvSelectedApk"
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
         android:layout_marginTop="12dp"
-        android:text="@string/no_apk_selected"
+        android:text="Belum ada APK dipilih"
         android:textSize="14sp" />
 
-    <Button
-        android:id="@+id/btnScan"
+    <TextView
+        android:id="@+id/tvRiskSummary"
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
-        android:layout_marginTop="12dp"
-        android:text="@string/scan_apk" />
+        android:layout_marginTop="8dp"
+        android:text="Risk score: 0/100"
+        android:textStyle="bold"
+        android:textSize="15sp" />
 
     <ScrollView
         android:layout_width="match_parent"
         android:layout_height="0dp"
         android:layout_weight="1"
-        android:layout_marginTop="16dp">
+        android:layout_marginTop="12dp">
 
         <TextView
             android:id="@+id/tvResult"
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
-            android:textSize="14sp"
             android:typeface="monospace"
+            android:textSize="13sp"
             android:textColor="#111111" />
     </ScrollView>
 
