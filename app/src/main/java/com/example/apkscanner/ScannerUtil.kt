@@ -1,97 +1,103 @@
 package com.example.apkscanner
 
-import java.util.zip.ZipInputStream
+import android.content.ClipData
+import android.content.ClipboardManager
+import android.content.Context
+import android.content.Intent
+import android.net.Uri
+import android.os.Bundle
+import android.widget.Toast
+import androidx.activity.result.contract.ActivityResultContracts
+import androidx.appcompat.app.AppCompatActivity
+import com.example.apkscanner.databinding.ActivityMainBinding
+import java.io.File
+import java.io.FileOutputStream
+import java.io.InputStream
 
-object ScannerUtil {
-    private val dangerousPermissions = setOf(
-        "android.permission.CAMERA",
-        "android.permission.RECORD_AUDIO",
-        "android.permission.ACCESS_FINE_LOCATION",
-        "android.permission.ACCESS_COARSE_LOCATION",
-        "android.permission.READ_CONTACTS",
-        "android.permission.WRITE_CONTACTS",
-        "android.permission.READ_SMS",
-        "android.permission.SEND_SMS",
-        "android.permission.CALL_PHONE",
-        "android.permission.READ_PHONE_STATE",
-        "android.permission.READ_EXTERNAL_STORAGE",
-        "android.permission.WRITE_EXTERNAL_STORAGE"
-    )
+class MainActivity : AppCompatActivity() {
+    private lateinit var binding: ActivityMainBinding
+    private var apkUri: Uri? = null
+    private var lastReport: String = ""
 
-    fun findDangerousPermissions(manifestText: String): List<String> {
-        return dangerousPermissions.filter { manifestText.contains(it) }
+    private val pickApk = registerForActivityResult(
+        ActivityResultContracts.OpenDocument()
+    ) { uri ->
+        if (uri == null) return@registerForActivityResult
+        apkUri = uri
+        binding.tvSelectedApk.text = "APK dipilih: ${uri.path}"
+        try {
+            contentResolver.takePersistableUriPermission(
+                uri,
+                Intent.FLAG_GRANT_READ_URI_PERMISSION
+            )
+        } catch (_: SecurityException) {
+            // ignore on devices that do not support this
+        }
     }
 
-    fun findExportedComponents(manifestText: String): List<String> {
-        val exportedPattern = Regex("android:exported=\"true\"")
-        return exportedPattern.findAll(manifestText)
-            .map { "Component exported=true" }
-            .toList()
+    override fun onCreate(savedInstanceState: Bundle?) {
+        super.onCreate(savedInstanceState)
+        binding = ActivityMainBinding.inflate(layoutInflater)
+        setContentView(binding.root)
+
+        binding.btnPickApk.setOnClickListener {
+            pickApk.launch(arrayOf("application/vnd.android.package-archive"))
+        }
+
+        binding.btnScan.setOnClickListener {
+            val uri = apkUri ?: run {
+                binding.tvResult.text = "Pilih APK terlebih dahulu."
+                return@setOnClickListener
+            }
+
+            val report = scanApkFromUri(uri)
+            lastReport = report
+            binding.tvResult.text = report
+            binding.tvRiskSummary.text = ScannerUtil.buildRiskSummary(report)
+        }
+
+        binding.btnCopy.setOnClickListener {
+            if (lastReport.isBlank()) {
+                Toast.makeText(this, "Belum ada hasil scan", Toast.LENGTH_SHORT).show()
+                return@setOnClickListener
+            }
+
+            val clipboard = getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager
+            val clip = ClipData.newPlainText("APK Security Report", lastReport)
+            clipboard.setPrimaryClip(clip)
+            Toast.makeText(this, "Hasil scan berhasil disalin", Toast.LENGTH_SHORT).show()
+        }
     }
 
-    fun findCleartextTraffic(manifestText: String): List<String> {
-        return if (manifestText.contains("usesCleartextTraffic=\"true\"")) {
-            listOf("usesCleartextTraffic=true")
+    private fun scanApkFromUri(uri: Uri): String {
+        val inputStream: InputStream? = contentResolver.openInputStream(uri)
+        if (inputStream == null) {
+            return "Gagal membuka file APK."
+        }
+
+        val tempFile = File(cacheDir, "selected.apk")
+        FileOutputStream(tempFile).use { out ->
+            inputStream.copyTo(out)
+        }
+
+        val report = ScannerUtil.analyzeApk(tempFile.absolutePath)
+
+        val builder = StringBuilder()
+        builder.append("APK Path: ${report.apkPath}\n")
+        builder.append("Risk Score: ${report.score}/100\n")
+        builder.append("Severity: ${report.severity}\n\n")
+
+        if (report.findings.isEmpty()) {
+            builder.append("Tidak ditemukan indikasi yang terlihat berbahaya.\n")
         } else {
-            emptyList()
-        }
-    }
-
-    fun findSecretsFromApk(apkPath: String): List<String> {
-        val results = mutableSetOf<String>()
-        val file = java.io.File(apkPath)
-        if (!file.exists()) return emptyList()
-
-        ZipInputStream(file.inputStream()).use { zip ->
-            var entry = zip.nextEntry
-            while (entry != null) {
-                if (!entry.isDirectory) {
-                    val text = String(zip.readBytes(), Charsets.UTF_8)
-                    val patterns = listOf(
-                        Regex("(?i)(api[_-]?key|apikey|client[_-]?secret|secret[_-]?key|access[_-]?token|auth[_-]?token)[:=].{3,}"),
-                        Regex("AIza[0-9A-Za-z\\-_]{35}"),
-                        Regex("ghp_[A-Za-z0-9]{20,}"),
-                        Regex("-----BEGIN [A-Z ]*PRIVATE KEY-----")
-                    )
-                    patterns.forEach { regex ->
-                        regex.findAll(text).forEach { match ->
-                            results.add("Potential secret match: ${match.value.take(120)}")
-                        }
-                    }
-                }
-                entry = zip.nextEntry
+            report.findings.forEach { finding ->
+                builder.append("[${finding.severity.uppercase()}] ${finding.type}\n")
+                builder.append("- ${finding.message}\n\n")
             }
         }
 
-        return results.toList()
-    }
-
-    fun findWebViewRisks(apkPath: String): List<String> {
-        val results = mutableSetOf<String>()
-        val file = java.io.File(apkPath)
-        if (!file.exists()) return emptyList()
-
-        ZipInputStream(file.inputStream()).use { zip ->
-            var entry = zip.nextEntry
-            while (entry != null) {
-                if (!entry.isDirectory) {
-                    val text = String(zip.readBytes(), Charsets.UTF_8)
-                    val patterns = listOf(
-                        "addJavascriptInterface",
-                        "setJavaScriptEnabled(true)",
-                        "setAllowFileAccess(true)",
-                        "loadUrl(\"file://"
-                    )
-                    patterns.forEach { pattern ->
-                        if (text.contains(pattern)) {
-                            results.add("WebView risky pattern: $pattern")
-                        }
-                    }
-                }
-                entry = zip.nextEntry
-            }
-        }
-
-        return results.toList()
+        builder.append("\nRekomendasi:\n")
+        builder.append(ScannerUtil.recommendations(report).joinToString(separator = "\n") { "- $it" })
+        return builder.toString()
     }
 }
