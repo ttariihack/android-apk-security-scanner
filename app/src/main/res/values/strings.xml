@@ -1,0 +1,7 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="app_name">APK Scanner</string>
+    <string name="pick_apk">Pilih APK</string>
+    <string name="scan_apk">Scan APK</string>
+    <string name="no_apk_selected">Belum ada APK dipilih</string>
+</resources>
