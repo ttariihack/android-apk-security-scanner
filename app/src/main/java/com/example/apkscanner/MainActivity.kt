@@ -1,5 +1,6 @@
 package com.example.apkscanner
 
+import android.app.Activity
 import android.content.Intent
 import android.net.Uri
 import android.os.Bundle
@@ -15,7 +16,9 @@ class MainActivity : AppCompatActivity() {
     private lateinit var binding: ActivityMainBinding
     private var apkUri: Uri? = null
 
-    private val openDocumentLauncher = registerForActivityResult(ActivityResultContracts.OpenDocument()) { uri ->
+    private val openDocumentLauncher = registerForActivityResult(
+        ActivityResultContracts.OpenDocument()
+    ) { uri ->
         if (uri != null) {
             apkUri = uri
             binding.tvSelectedApk.text = "APK dipilih: ${uri.path}"
@@ -25,7 +28,7 @@ class MainActivity : AppCompatActivity() {
                     Intent.FLAG_GRANT_READ_URI_PERMISSION
                 )
             } catch (_: SecurityException) {
-                // ignore on some devices
+                // Some devices do not allow persistable URI permission here.
             }
         }
     }
@@ -46,8 +49,8 @@ class MainActivity : AppCompatActivity() {
                 return@setOnClickListener
             }
 
-            val result = scanApkFromUri(uri)
-            binding.tvResult.text = result
+            val report = scanApkFromUri(uri)
+            binding.tvResult.text = report
         }
     }
 
@@ -64,41 +67,56 @@ class MainActivity : AppCompatActivity() {
 
         val manifestText = readManifestFromApk(tempFile.absolutePath)
         val dangerousPermissions = ScannerUtil.findDangerousPermissions(manifestText)
-        val exported = ScannerUtil.findExportedComponents(manifestText)
-        val cleartext = ScannerUtil.findCleartextTraffic(manifestText)
+        val exportedComponents = ScannerUtil.findExportedComponents(manifestText)
+        val cleartextTraffic = ScannerUtil.findCleartextTraffic(manifestText)
         val secrets = ScannerUtil.findSecretsFromApk(tempFile.absolutePath)
-        val webview = ScannerUtil.findWebViewRisks(tempFile.absolutePath)
+        val riskyWebViews = ScannerUtil.findWebViewRisks(tempFile.absolutePath)
 
         val builder = StringBuilder()
         builder.append("APK: ${tempFile.absolutePath}\n")
         builder.append("== Permission berbahaya ==\n")
-        if (dangerousPermissions.isEmpty()) builder.append("- Tidak ada permission berbahaya terdeteksi\n")
-        else dangerousPermissions.forEach { builder.append("- $it\n") }
+        if (dangerousPermissions.isEmpty()) {
+            builder.append("- Tidak ada permission berbahaya terdeteksi\n")
+        } else {
+            dangerousPermissions.forEach { builder.append("- $it\n") }
+        }
 
         builder.append("\n== Exported components ==\n")
-        if (exported.isEmpty()) builder.append("- Tidak ada component yang exported=true\n")
-        else exported.forEach { builder.append("- $it\n") }
+        if (exportedComponents.isEmpty()) {
+            builder.append("- Tidak ada component yang exported=true\n")
+        } else {
+            exportedComponents.forEach { builder.append("- $it\n") }
+        }
 
         builder.append("\n== Cleartext traffic ==\n")
-        if (cleartext.isEmpty()) builder.append("- Tidak ada cleartext traffic di manifest\n")
-        else cleartext.forEach { builder.append("- $it\n") }
+        if (cleartextTraffic.isEmpty()) {
+            builder.append("- Tidak ada cleartext traffic di manifest\n")
+        } else {
+            cleartextTraffic.forEach { builder.append("- $it\n") }
+        }
 
         builder.append("\n== Potensi secret/token ==\n")
-        if (secrets.isEmpty()) builder.append("- Tidak ada pattern secret/token yang terdeteksi\n")
-        else secrets.forEach { builder.append("- $it\n") }
+        if (secrets.isEmpty()) {
+            builder.append("- Tidak ada pattern secret/token yang terdeteksi\n")
+        } else {
+            secrets.forEach { builder.append("- $it\n") }
+        }
 
         builder.append("\n== Potensi WebView risk ==\n")
-        if (webview.isEmpty()) builder.append("- Tidak ada pattern WebView yang terlihat berisiko\n")
-        else webview.forEach { builder.append("- $it\n") }
+        if (riskyWebViews.isEmpty()) {
+            builder.append("- Tidak ada pattern WebView yang terlihat berisiko\n")
+        } else {
+            riskyWebViews.forEach { builder.append("- $it\n") }
+        }
 
         return builder.toString()
     }
 
     private fun readManifestFromApk(apkPath: String): String {
-        val file = File(apkPath)
-        if (!file.exists()) return ""
+        val apkFile = File(apkPath)
+        if (!apkFile.exists()) return ""
 
-        ZipInputStream(file.inputStream()).use { zip ->
+        ZipInputStream(apkFile.inputStream()).use { zip ->
             var entry = zip.nextEntry
             while (entry != null) {
                 if (entry.name == "AndroidManifest.xml") {

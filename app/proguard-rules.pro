@@ -1,5 +1,3 @@
-# -*- coding: utf-8 -*-
-# generated from templates
+# Copyright 2024
 
-# Proguard rules for APK Scanner
-# No special rules needed for this sample app.
+# This project is a simple Android static scanner for authorized testing only.
